@@ -1,90 +1,215 @@
-# Server-Authoritative Real-Time Multiplayer Game Server with Lag Compensation
+<div align="center">
 
-[![CI Pipeline](https://github.com/your-username/realtime-multiplayer-game-server/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/realtime-multiplayer-game-server/actions/workflows/ci.yml)
-![Node.js](https://img.shields.io/badge/Node.js-20.x%20%7C%2022.x-339933?logo=nodedotjs)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)
-![WebSockets](https://img.shields.io/badge/WebSockets-Raw%20WS-010101)
-![Vitest](https://img.shields.io/badge/Tests-35%20Passing-6E9F18?logo=vitest)
-![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?logo=docker)
+# ⚡ Real-Time Multiplayer Game Server
+### Server-Authoritative Architecture • Lag Compensation • Client-Side Prediction • Anti-Cheat
 
-A production-grade, server-authoritative multiplayer backend built in Node.js and TypeScript. 
+[![CI Pipeline](https://github.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/Node.js-20.x%20%7C%2022.x-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![WebSockets](https://img.shields.io/badge/WebSockets-Raw%20WS-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://github.com/websockets/ws)
+[![Tests](https://img.shields.io/badge/Vitest-36%20Passing-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-This project explores the critical problem of **time and trust** in distributed real-time systems: reconciling what a client thinks happened with what the server knows happened, across variable network latency, without ever trusting client-reported states.
+<p align="center">
+  <b>A production-grade, server-authoritative multiplayer backend built in Node.js and TypeScript.</b><br>
+  Engineered specifically to solve the core distributed systems challenge of <b>Time and Trust</b> across variable network latency.
+</p>
+
+[🎮 Live Demo](#-interactive-demo-client) •
+[🏗️ Architecture](#️-system-architecture) •
+[⏱️ Time & Trust](#-the-core-problem-time--trust) •
+[⚖️ Trade-Offs](#️-engineering-trade-offs) •
+[🧪 Test Suite](#-automated-testing--verification) •
+[🚀 Quick Start](#-quick-start)
 
 ---
 
-## ⚡ The Core Problem: Time & Trust
+</div>
 
-In common collaborative applications (e.g., Google Docs, Figma), state synchronization is solved using **CRDTs or Operational Transformation**, where edits commute and clients are trusted to report their own local edits.
+## 📌 Executive Summary
 
-In competitive real-time games, that paradigm fails completely:
-1. **Zero Trust**: Clients cannot report positions, health, or hits. If they could, players would modify memory to teleport or trigger rapid-fire kills. The server must be the **sole author of ground truth**.
-2. **Speed of Light**: A packet takes 50–150ms round-trip across broadband. If a client waits for server confirmation before displaying movement, controls feel sluggish and unresponsive.
-3. **Timeline Desynchronization**: When Player A fires at Player B, Player A is aiming at where Player B was $\approx \text{RTT}/2$ milliseconds in the past. If the server evaluates the shot against Player B's *current* position, the shot will miss.
+Most real-time web applications (Google Docs, Figma, collaborative whiteboards) operate on **eventual consistency** or **CRDT state synchronization**, where mutations commute and peers are inherently trusted to report their own state.
 
-This server implements the complete industry-standard solution:
-- **Client-Side Prediction**: Client renders input responses immediately with zero perceived latency.
-- **Server Reconciliation**: Client detects divergence against authoritative state and re-simulates unacknowledged inputs.
-- **Lag Compensation (Server Rewind)**: Server temporarily rewinds the world to the shooter's historical perspective to evaluate hitscan shots fairly.
-- **Deterministic Simulation**: 20Hz fixed-timestep physics loop with deterministic resolution for contested actions.
-- **Anti-Cheat Validation**: Inbound input sanity checks, rate limiting, and monotonic sequence validation.
+In competitive real-time multiplayer games, this model completely breaks down:
+- **Zero Trust**: Clients cannot report positions, velocity, health, or hits. If they could, players would tamper with memory to teleport, bypass obstacles, or execute instant kills. The server must be the **sole author of ground truth**.
+- **Speed of Light Latency**: Packets take 50–150ms round-trip. If a player waits for server confirmation before seeing their character move, controls feel sluggish, delayed, and unplayable.
+- **Timeline Desynchronization**: When Player A fires at Player B, Player A is aiming at where Player B appeared $\approx \text{RTT}/2$ in the past. If the server evaluates the hitscan against Player B's *current* position, the bullet will miss every time.
+
+This project delivers the complete, industry-standard multiplayer netcode stack (as used in *Counter-Strike*, *Overwatch*, and *Valorant*) implemented in modern TypeScript.
 
 ---
 
 ## 🎮 Interactive Demo Client
 
-The server serves an interactive browser-based arena at `http://localhost:3000`.
+The backend serves an interactive, high-performance HTML5 Canvas client accessible at `http://localhost:3000`:
 
-- **Prediction & Reconciliation Toggle**: Turn off prediction to feel the raw network delay, or disable reconciliation to observe desynchronization drift.
-- **Artificial Latency Simulator**: Inject artificial network delay (0ms to 500ms) with customizable packet jitter directly in the browser to test netcode resilience.
-- **Real-Time HUD**: Real-time display of tick counter, server RTT, pending inputs buffer size, reconciliation corrections, and Prometheus metrics.
+<div align="center">
+  <kbd><img src="https://raw.githubusercontent.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server/main/docs/demo_preview.png" alt="Arena Preview" width="850" onerror="this.style.display='none'"/></kbd>
+</div>
+
+### Client Features
+- **Client-Side Prediction**: Inputs immediately update local position via shared deterministic physics equations.
+- **Server Reconciliation**: Automatically reconciles divergence when the server state arrives, replaying unacknowledged inputs seamlessly.
+- **Adaptive Smoothing**: Small prediction errors ($<50\text{ units}$) are smoothly lerped over 100ms; large errors ($>50\text{ units}$) trigger an instant snap to eliminate rubberbanding.
+- **Entity Interpolation**: Remote opponents render 1 tick in the past, smoothly interpolated between snapshots to eliminate packet stutter.
+- **In-Browser Latency Simulator**: Interactive slider allowing developers to inject **0ms to 500ms artificial network delay** and custom packet jitter directly in the browser.
+- **Real-Time Telemetry HUD**: Live metrics for ping/RTT, tick counter, pending inputs buffer size, reconciliation frequency, and health bars.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
 ```mermaid
 graph TD
-    subgraph Client ["Game Client (Browser Canvas)"]
+    subgraph Client ["Game Client (Browser Canvas @ 60 FPS)"]
         Input["Input Handler (WASD + Mouse)"]
-        Pred["Client-Side Prediction"]
-        Buffer["Pending Inputs Buffer"]
+        Pred["Client-Side Prediction Engine"]
+        Buffer["Pending Inputs Ring Buffer"]
         Recon["Server Reconciliation Engine"]
         Interp["Remote Entity Interpolator"]
-        Canvas["Renderer (60 FPS)"]
+        Canvas["Canvas Renderer"]
     end
 
-    subgraph Server ["Server-Authoritative Backend (Node.js / WS)"]
-        WS["WebSocket Server (port 3000)"]
-        Validator["InputValidator (Anti-Cheat & Rate Limits)"]
-        Room["Room Instance (Fault Isolated)"]
-        Loop["GameLoop (20Hz Fixed Timestep)"]
+    subgraph Server ["Server-Authoritative Backend (Node.js 20 / Raw WebSockets)"]
+        WS["WebSocket Server (:3000)"]
+        Validator["InputValidator (Anti-Cheat & Rate Limiter)"]
+        Room["Room Manager (Fault-Isolated)"]
+        Loop["GameLoop (20Hz Fixed Timestep / 50ms)"]
         Sim["Simulation Engine (Deterministic Physics)"]
         LagComp["LagCompensator (State History Ring Buffer)"]
-        Metrics["Prometheus Metrics (/metrics)"]
+        Metrics["Prometheus Exporter (/metrics)"]
     end
 
-    Input -->|Sample Frame Input| Pred
-    Pred -->|Immediate Local Move| Canvas
-    Input -->|Buffer seq, actions| Buffer
-    Input -->|Send INPUT message| WS
+    Input -->|Frame Sample| Pred
+    Pred -->|Instant Visual Update| Canvas
+    Input -->|Store seq & actions| Buffer
+    Input -->|Transmit INPUT packet| WS
 
     WS --> Validator
     Validator -->|Validated Inputs| Room
     Room --> Loop
-    Loop -->|Fixed dt = 50ms| Sim
+    Loop -->|Fixed dt = 0.05s| Sim
     Sim --> LagComp
-    LagComp -->|Record Tick Snapshot| LagComp
+    LagComp -->|Record Historical Snapshot| LagComp
 
     Room -->|Broadcast STATE_UPDATE| Recon
     Room -->|Broadcast STATE_UPDATE| Interp
-    Recon -->|Discard acknowledged seqs & Replay| Buffer
+    Recon -->|Prune Acknowledged Seqs & Replay| Buffer
     Buffer --> Canvas
     Interp --> Canvas
     Loop --> Metrics
 ```
 
-For complete technical specifications, mathematical proofs, and wire protocols, see [ARCHITECTURE.md](file:///e:/14.09.2026%20ganesh%20chaturthi/Projects/Real-Time%20Multiplayer%20Game%20Server%20with%20Lag%20Compensation/ARCHITECTURE.md).
+For full mathematical proofs, algorithm diagrams, and sequence flows, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## ⏱️ The Core Problem: Time & Trust
+
+```
+Timeline Desynchronization:
+Shooter Screen (t - 75ms)  : Target is at (X: 100, Y: 100)  <-- Shooter aims here and clicks!
+Server Authoritative (t)   : Target is at (X: 160, Y: 100)  <-- Without rewind: MISS!
+Victim Screen (t)          : Target is at (X: 160, Y: 100)
+-----------------------------------------------------------------------------------------
+Solution (Lag Compensation):
+Server rewinds Target's hitbox back to (X: 100, Y: 100) for the raycast check: HIT!
+Damage is applied to Target's CURRENT HP on the server timeline.
+```
+
+### The 4 Pillars of Our Netcode
+
+1. **Fixed-Timestep Simulation Loop** ([`src/server/GameLoop.ts`](src/server/GameLoop.ts))
+   - Runs at a strict $20\text{Hz}$ ($50\text{ms}$ interval) using `setInterval` rather than chained timeouts.
+   - Measures actual wall-clock duration with high-resolution `process.hrtime.bigint()` to detect and warn on tick budget overruns.
+   - Physics always advances by constant $dt = 0.05\text{s}$, guaranteeing determinism across machines.
+
+2. **Deterministic Physics Engine** ([`src/server/Simulation.ts`](src/server/Simulation.ts))
+   - Pure, side-effect-free function: $f(\text{State}, \text{Inputs}, dt) \to \text{NextState}$.
+   - Runs the identical mathematical formula ([`src/shared/physics.ts`](src/shared/physics.ts)) on both server and client.
+   - Deterministic execution ordering: players are sorted alphabetically by ID so contested same-tick actions resolve predictably.
+
+3. **Client-Side Prediction & Server Reconciliation** ([`tests/unit/reconciliation.test.ts`](tests/unit/reconciliation.test.ts))
+   - Client stores pending inputs with predicted outcomes in a circular buffer.
+   - On receiving an authoritative server state with `lastProcessedSeq`, inputs $\le \text{lastProcessedSeq}$ are pruned.
+   - If predicted state at `lastProcessedSeq` diverges from server truth, the client resets to authoritative state and re-executes all remaining unacknowledged inputs.
+
+4. **Lag Compensation via Server Rewind** ([`src/server/LagCompensator.ts`](src/server/LagCompensator.ts))
+   - Maintains a rolling 10-tick ($500\text{ms}$) circular history buffer of all player hitboxes.
+   - On firing, calculates shooter's historical view:
+     $$\text{ticksAgo} = \min\left(\left\lceil \frac{\text{RTT} / 2}{\text{TICK\_INTERVAL\_MS}} \right\rceil, 4\right)$$
+   - Performs hitscan ray-circle intersection against historical positions. If hit, damage applies to current HP.
+
+---
+
+## ⚖️ Engineering Trade-Offs
+
+### 1. Lag Compensation: Shooter Advantage vs. Victim Experience
+| Perspective | Experience | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Shooter Perspective** | Responsive & Fair | "What you see is what you hit." Players do not need to lead hitscan weapons based on arbitrary ping. |
+| **Victim Perspective** | Occasional Desync | A victim running behind a wall might get hit because, on the shooter's delayed screen, they had not reached cover yet. |
+| **Our Mitigation** | **200ms Rewind Cap** | Rewind is hard-capped at 4 ticks ($200\text{ms}$). Players with $>200\text{ms}$ ping receive partial compensation and must lead their shots. This protects low-ping victims from extreme "shot around corners" artifacts. |
+
+### 2. Tick Rate: 20Hz vs. 60Hz
+- **20Hz ($50\text{ms}$)**: Selected for this server. Ideal for web-based multiplayer, consuming $\approx 8\text{--}12\text{ KB/s}$ bandwidth per client while maintaining crisp responsiveness via client-side interpolation.
+- **60Hz ($16.6\text{ms}$)**: Requires 3x CPU budget and 3x network bandwidth. While common in esports (CS2/Valorant), 20Hz is standard for large-scale games (Battlefield, Overwatch base servers) and makes the discrete math easy to reason about.
+
+### 3. Security Boundaries of Server Authority
+| Cheat Vector | Server Defense | Status |
+| :--- | :--- | :---: |
+| **Speed Hacking** | Server computes all displacements via `applyMovement` | 🛡️ **Prevented** |
+| **Teleportation** | Client coordinates are never accepted over wire | 🛡️ **Prevented** |
+| **Rapid-Fire Exploits** | Server enforces strict cooldowns (`SHOOT_COOLDOWN_MS = 500ms`) | 🛡️ **Prevented** |
+| **Replay Attacks** | Strictly monotonic sequence numbers (`INVALID_SEQUENCE`) | 🛡️ **Prevented** |
+| **Input Flooding** | Rate limiter drops packets exceeding 60 inputs/s (`INPUT_FLOOD`) | 🛡️ **Prevented** |
+| **Floating-Point Poisoning** | Non-finite angle rejection (`NaN`, `Infinity`) | 🛡️ **Prevented** |
+| **Aimbots** | Client sends mathematically optimal aim angles within normal limits | ⚠️ **Not Solved** *(Requires client anti-cheat binaries)* |
+| **Wallhacks** | State broadcast sends positions of all players in room | ⚠️ **Not Solved** *(Requires server occlusion culling)* |
+
+---
+
+## 🧪 Automated Testing & Verification
+
+The repository features comprehensive automated test suites covering unit physics, edge cases, anti-cheat validation, and the 5 critical failure scenarios:
+
+```bash
+# Run unit & integration tests
+npm test
+
+# Run linter
+npm run lint
+
+# Static TypeScript type check
+npm run typecheck
+
+# Run 20Hz load test harness
+npm run test:load
+```
+
+### The 5 Verified Failure Scenarios
+Detailed analysis and mitigations are documented in [docs/failure-scenarios.md](docs/failure-scenarios.md):
+
+1. **High-Latency Client (300ms Ping)** ([`tests/integration/latency-simulator.test.ts`](tests/integration/latency-simulator.test.ts)): Tests prediction smoothing, RTT jitter smoothing via exponential moving averages, and strict adherence to the 200ms rewind cap.
+2. **Malicious Client Input** ([`tests/integration/malicious-client.test.ts`](tests/integration/malicious-client.test.ts)): Tests rapid-fire bursts, input flood throttling, sequence replays, and `NaN`/`Infinity` angle rejections.
+3. **Server Tick Overload** ([`tests/unit/Simulation.test.ts`](tests/unit/Simulation.test.ts)): Tests fixed-timestep determinism under artificial tick delays and overrun log warnings.
+4. **Mid-Match Disconnect & Reconnect** ([`tests/integration/reconnection.test.ts`](tests/integration/reconnection.test.ts)): Verifies the 30-second disconnect grace period, preserving player state, score, and position upon reconnection.
+5. **Contested Resource / Same-Tick Conflict** ([`tests/integration/contested-resource.test.ts`](tests/integration/contested-resource.test.ts)): Verifies deterministic alphabetical player ID ordering for simultaneous actions, ensuring no double-kills or ghost damage.
+
+### Load Test Benchmark
+Results on single-node environment with 15 concurrent clients generating continuous 20Hz input streams:
+```
+======================================================
+  LOAD TEST BENCHMARK (15 Clients @ 20Hz)
+======================================================
+  Total Inputs Sent:    720 (~240 msg/s)
+  Total States Recv:    384 (~128 msg/s)
+  Ping RTT P50:         1.0 ms
+  Ping RTT P95:         4.0 ms
+  Ping RTT P99:         4.0 ms
+======================================================
+```
 
 ---
 
@@ -92,139 +217,107 @@ For complete technical specifications, mathematical proofs, and wire protocols, 
 
 ### Option 1: Docker Compose (Recommended)
 
-Spins up the game server along with Prometheus metrics scraping:
+Spins up the game server along with Prometheus metrics scraping in isolated containers:
 
 ```bash
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-- Open `http://localhost:3000` in multiple browser tabs to join the arena.
-- Inspect metrics at `http://localhost:3000/metrics` or via Prometheus at `http://localhost:9090`.
+- **Game Client**: `http://localhost:3000` (open in multiple tabs to test multiplayer)
+- **Health Check**: `http://localhost:3000/health`
+- **Prometheus Telemetry**: `http://localhost:3000/metrics`
+- **Prometheus Dashboard**: `http://localhost:9090`
 
 ### Option 2: Local Development
 
 Requires **Node.js >= 20.0.0**:
 
 ```bash
-# 1. Install dependencies
+# 1. Clone repository
+git clone https://github.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server.git
+cd Real-Time-Multiplayer-Game-Server
+
+# 2. Install dependencies
 npm install
 
-# 2. Run in development mode (hot-reloading)
+# 3. Start development server with hot-reload
 npm run dev
 
-# 3. Open browser at http://localhost:3000
+# 4. Open in browser
+# Navigate to http://localhost:3000
 ```
 
 ---
 
-## ⚖️ Engineering Trade-Offs
+## 📊 Prometheus Observability
 
-### 1. Lag Compensation: Shooter Advantage vs. Victim Experience
-* **The Trade-Off**: Lag compensation prioritizes the shooter's experience. If a player aims directly at an opponent and clicks, the shot registers because the server rewinds to what the shooter saw.
-* **The Downside**: A victim who sprinted behind a wall on their screen might die because, on the shooter's delayed screen, they had not yet reached cover.
-* **Our Resolution**: We enforce a **200ms rewind ceiling** (`MAX_LAG_COMPENSATION_TICKS = 4`). High-ping players ($>200\text{ms}$) receive only partial rewind compensation and must lead their shots. This prevents extreme "shot around corners" artifacts while remaining responsive for typical broadband latencies ($20\text{--}80\text{ms}$).
+The server exports standard and custom gaming metrics at `GET /metrics`:
 
-### 2. Tick Rate vs. Bandwidth vs. CPU Overhead
-* **20Hz (50ms interval)**: Selected for this server. 20 updates per second strikes an optimal balance for web-based multiplayer, consuming $\approx 8\text{--}12\text{ KB/s}$ per client while maintaining crisp responsiveness when paired with client-side interpolation.
-* **60Hz (16.6ms interval)**: Requires 3x CPU budget and 3x network bandwidth. While standard for esports titles (CS2, Valorant), 20Hz is standard for large-scale games (Battlefield, Overwatch base servers) and allows explaining the discrete mathematics cleanly.
-
-### 3. Security Limits of Server Authority
-| Attack Vector | Server-Authoritative Defense | Status |
-| :--- | :--- | :--- |
-| **Speed Hacking** | Server computes all displacements via `applyMovement` | 🛡️ **Prevented** |
-| **Teleportation** | Client coordinates are never accepted over wire | 🛡️ **Prevented** |
-| **Rapid Fire** | Server enforces strict cooldowns (`SHOOT_COOLDOWN_MS`) | 🛡️ **Prevented** |
-| **Packet Replays** | Monotonic sequence number enforcement (`INVALID_SEQUENCE`) | 🛡️ **Prevented** |
-| **Input Flooding** | Rate limiter throttles inputs exceeding 60/sec (`INPUT_FLOOD`) | 🛡️ **Prevented** |
-| **Aimbots** | Client sends mathematically optimal aim angles within physical constraints | ⚠️ **Not Solved** *(Requires behavioral heuristics)* |
-| **Wallhacks** | State broadcast sends positions of all players in room | ⚠️ **Not Solved** *(Requires server occlusion culling)* |
-
----
-
-## 🧪 Automated Testing & Verification
-
-The test suite covers unit mechanics, anti-cheat validation, and the 5 critical failure scenarios:
-
-```bash
-# Run unit and integration tests (35 passing tests)
-npm test
-
-# Run code style linter
-npm run lint
-
-# Static TypeScript type check
-npm run typecheck
-
-# Run 20Hz load test harness (simulates 15 concurrent players)
-npm run test:load
-```
-
-### Verified Failure Scenarios
-Detailed explanations and architecture mitigations are documented in [docs/failure-scenarios.md](file:///e:/14.09.2026%20ganesh%20chaturthi/Projects/Real-Time%20Multiplayer%20Game%20Server%20with%20Lag%20Compensation/docs/failure-scenarios.md):
-1. **High-Latency Client (300ms Ping)**: Prediction keeps local movement fluid; lag compensator rewinds historical hitscan up to the 200ms cap.
-2. **Malicious Client Input**: Speed hacking, rapid-fire spam, and math poisoning (`NaN` aim angles) are rejected and logged.
-3. **Server Tick Overload**: Fixed timestep maintains physics determinism; overrun warnings log when tick duration exceeds 50ms budget.
-4. **Mid-Match Disconnect & Reconnect**: 30-second grace period preserves player score, state, and position upon reconnecting.
-5. **Contested Resource / Same-Tick Conflict**: Deterministic resolution via alphabetical player ID ordering guarantees no double-kills or ghost damage.
-
-### Load Test Benchmark
-Results on single-node test environment with 15 concurrent clients generating 20Hz continuous input streams:
-```
---- LOAD TEST RESULTS ---
-Concurrent Clients:   15
-Total Inputs Sent:    720 (~240 msg/s)
-Total States Recv:    384 (~128 msg/s)
-Ping RTT P50:         1.0 ms
-Ping RTT P95:         4.0 ms
-Ping RTT P99:         4.0 ms
-```
+| Metric Name | Type | Description |
+| :--- | :---: | :--- |
+| `game_tick_duration_ms` | Histogram | Execution time of each server tick ($50\text{ms}$ budget) |
+| `game_room_player_count` | Gauge | Active player count per room |
+| `game_rooms_active` | Gauge | Total active rooms in memory |
+| `game_messages_received_total` | Counter | Total WebSocket inbound messages |
+| `game_messages_sent_total` | Counter | Total WebSocket outbound state updates |
+| `game_input_violations_total` | Counter | Rejected inputs labeled by violation type (`invalid_sequence`, `rapid_fire`, `input_flood`, `invalid_aim`) |
 
 ---
 
 ## 📁 Repository Structure
 
 ```
+Real-Time-Multiplayer-Game-Server/
 ├── .github/workflows/
-│   └── ci.yml                     # GitHub Actions CI matrix (Node 20 & 22)
+│   └── ci.yml                     # Multi-OS CI testing matrix (Node 20 & 22)
 ├── docker/
 │   ├── Dockerfile                 # Multi-stage production build
 │   ├── docker-compose.yml         # Container stack (Server + Prometheus)
-│   └── prometheus.yml             # Metrics scrape config
+│   └── prometheus.yml             # Metrics scrape configuration
 ├── docs/
 │   └── failure-scenarios.md       # In-depth failure scenario documentation
 ├── scripts/
-│   └── bundle-client.js           # Client build asset pipeline
+│   └── bundle-client.js           # Client asset distribution pipeline
 ├── src/
 │   ├── client/
-│   │   └── index.html             # Client UI, Canvas renderer & prediction engine
+│   │   └── index.html             # Canvas client, prediction engine & HUD
 │   ├── server/
-│   │   ├── index.ts               # HTTP & WS bootstrap entry point
-│   │   ├── GameServer.ts          # Connection orchestration & routing
-│   │   ├── Room.ts                # Room lifecycle & tick loop coordination
+│   │   ├── index.ts               # HTTP & WebSocket server bootstrap
+│   │   ├── GameServer.ts          # Connection orchestration & room router
+│   │   ├── Room.ts                # Room lifecycle & tick coordination
 │   │   ├── GameLoop.ts            # 20Hz fixed-timestep ticker
-│   │   ├── Simulation.ts          # Deterministic physics & collision engine
+│   │   ├── Simulation.ts          # Pure deterministic physics engine
 │   │   ├── LagCompensator.ts      # State rewind buffer & hitscan raycaster
 │   │   ├── InputValidator.ts      # Anti-cheat validator & rate limiter
 │   │   ├── Player.ts              # Authoritative player state entity
 │   │   ├── Projectile.ts          # Visual tracer entity
 │   │   ├── metrics/prometheus.ts  # Prometheus telemetry registry
 │   │   ├── protocol/serializer.ts # Message wire encoding/decoding
-│   │   └── utils/                 # Clock & structured logger
+│   │   └── utils/                 # Clock & structured pino logger
 │   └── shared/
 │       ├── constants.ts           # Game loop, physics & arena constants
 │       ├── physics.ts             # Deterministic shared math (movement/raycast)
-│       └── types.ts               # Shared protocol & state types
+│       └── types.ts               # Strongly-typed wire protocol messages
 ├── tests/
 │   ├── unit/                      # Simulation, Validator, LagCompensator, Room, Reconciliation
 │   ├── integration/               # Reconnect, Malicious, Contested, Latency Simulator
-│   └── load/                      # LoadTestHarness (20Hz stress testing)
+│   └── load/                      # LoadTestHarness (20Hz stress benchmark)
 ├── ARCHITECTURE.md                # System design & mathematical algorithms
-└── README.md
+├── README.md                      # Project documentation
+├── tsconfig.json                  # Strict TypeScript configuration
+└── vitest.config.ts               # Test suite configuration
 ```
 
 ---
 
+## 👨‍💻 Author
+
+**Abhishek Kumar**
+- GitHub: [@abhishekkumarcoder21](https://github.com/abhishekkumarcoder21)
+- Project: [Real-Time-Multiplayer-Game-Server](https://github.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server)
+
+---
+
 ## 📜 License
-MIT License. Built as an engineering portfolio demonstration of real-time multiplayer systems.
-#   R e a l - T i m e - M u l t i p l a y e r - G a m e - S e r v e r  
- 
+
+Distributed under the **MIT License**. See `LICENSE` for details. Built as an engineering portfolio demonstration of real-time multiplayer systems.

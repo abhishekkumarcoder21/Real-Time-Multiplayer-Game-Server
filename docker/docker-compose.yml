@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  game-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: lag-comp-game-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - game-network
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: lag-comp-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - game-network
+    depends_on:
+      - game-server
+
+networks:
+  game-network:
+    driver: bridge

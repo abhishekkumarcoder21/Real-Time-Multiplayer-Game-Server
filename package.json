@@ -1,0 +1,39 @@
+{
+  "name": "realtime-multiplayer-game-server",
+  "version": "1.0.0",
+  "description": "Server-authoritative real-time multiplayer game backend with lag compensation, client-side prediction, and server reconciliation",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "build": "tsc && node scripts/bundle-client.js",
+    "start": "node dist/server/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:load": "tsx tests/load/LoadTestHarness.ts",
+    "lint": "eslint src/ tests/",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\""
+  },
+  "dependencies": {
+    "pino": "^9.6.0",
+    "prom-client": "^15.1.0",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.0",
+    "@typescript-eslint/parser": "^8.29.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.24.0",
+    "prettier": "^3.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

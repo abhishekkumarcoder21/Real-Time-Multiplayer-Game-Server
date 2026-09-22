@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lag Compensation Arena — Real-Time Multiplayer Demo</title>
+  <meta name="description" content="Interactive demo of server-authoritative multiplayer netcode with client-side prediction, server reconciliation, and lag compensation">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-secondary: #111827;
+      --bg-card: rgba(17, 24, 39, 0.85);
+      --border: rgba(99, 102, 241, 0.2);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --cyan: #06b6d4;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-dot.disconnected { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+    /* ─── Main Content ───────────────────────────────────────── */
+    .main {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ─── Canvas ─────────────────────────────────────────────── */
+    #gameCanvas {
+      flex: 1;
+      background: var(--bg-primary);
+      cursor: crosshair;
+    }
+
+    /* ─── Side Panel ─────────────────────────────────────────── */
+    .side-panel {
+      width: 280px;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .panel-section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* ─── HUD Stats ──────────────────────────────────────────── */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+
+    .stat-label { color: var(--text-secondary); }
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .stat-value.good { color: var(--green); }
+    .stat-value.warn { color: var(--yellow); }
+    .stat-value.bad { color: var(--red); }
+
+    /* ─── HP Bar ─────────────────────────────────────────────── */
+    .hp-bar-container {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .hp-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), #4ade80);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .hp-bar.low {
+      background: linear-gradient(90deg, var(--red), #f87171);
+    }
+
+    /* ─── Scoreboard ─────────────────────────────────────────── */
+    .scoreboard-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 8px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .scoreboard-entry.self {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid var(--border);
+    }
+
+    .score-name { 
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .player-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    /* ─── Connection Dialog ──────────────────────────────────── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .dialog {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      width: 400px;
+      box-shadow: 0 0 60px var(--accent-glow);
+    }
+
+    .dialog h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .dialog p {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+
+    .input-group {
+      margin-bottom: 16px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-group input:focus {
+      border-color: var(--accent);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #818cf8);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.05);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    /* ─── Controls Help ──────────────────────────────────────── */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 12px;
+      font-size: 12px;
+    }
+
+    .key {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-align: center;
+      min-width: 28px;
+    }
+
+    /* ─── Debug Info ──────────────────────────────────────────── */
+    .debug-toggle {
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      margin-top: 8px;
+      user-select: none;
+    }
+
+    .debug-info {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 8px;
+      display: none;
+    }
+
+    .debug-info.visible { display: block; }
+
+    /* ─── Kill Feed ──────────────────────────────────────────── */
+    .kill-feed {
+      position: absolute;
+      top: 12px;
+      right: 292px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      pointer-events: none;
+    }
+
+    .kill-entry {
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 6px;
+      font-size: 12px;
+      animation: fadeIn 0.3s ease, fadeOut 0.5s ease 3.5s forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Connection Dialog -->
+  <div class="overlay" id="connectDialog">
+    <div class="dialog">
+      <h2>Lag Compensation Arena</h2>
+      <p>Server-authoritative multiplayer with client-side prediction & reconciliation</p>
+      <div class="input-group">
+        <label>Player Name</label>
+        <input type="text" id="playerName" placeholder="Enter your name" maxlength="20" value="">
+      </div>
+      <div class="input-group">
+        <label>Room Code (leave blank to create new)</label>
+        <input type="text" id="roomCode" placeholder="e.g. AB12CD34" maxlength="8" style="text-transform: uppercase;">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnCreate">Create Room</button>
+        <button class="btn btn-primary" id="btnJoin">Join Room</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game UI -->
+  <header class="header">
+    <h1>⚡ Lag Compensation Arena</h1>
+    <div class="header-status">
+      <span><span class="status-dot disconnected" id="statusDot"></span><span id="statusText">Disconnected</span></span>
+      <span>Room: <span id="roomId">—</span></span>
+      <span>RTT: <span id="rttDisplay" class="stat-value">—</span></span>
+    </div>
+  </header>
+
+  <div class="main">
+    <canvas id="gameCanvas"></canvas>
+    <div class="kill-feed" id="killFeed"></div>
+
+    <div class="side-panel">
+      <!-- Network Stats -->
+      <div class="panel-section">
+        <h3>Network</h3>
+        <div class="stat-row">
+          <span class="stat-label">Latency (RTT)</span>
+          <span class="stat-value" id="statRtt">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Server Tick</span>
+          <span class="stat-value" id="statTick">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Pending Inputs</span>
+          <span class="stat-value" id="statPending">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Corrections</span>
+          <span class="stat-value" id="statCorrections">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Last Error</span>
+          <span class="stat-value" id="statLastError">0.0</span>
+        </div>
+      </div>
+
+      <!-- Player Stats -->
+      <div class="panel-section">
+        <h3>Player</h3>
+        <div class="stat-row">
+          <span class="stat-label">HP</span>
+          <span class="stat-value" id="statHp">100</span>
+        </div>
+        <div class="hp-bar-container">
+          <div class="hp-bar" id="hpBar" style="width: 100%"></div>
+        </div>
+        <div class="stat-row" style="margin-top: 8px;">
+          <span class="stat-label">Score</span>
+          <span class="stat-value" id="statScore">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Position</span>
+          <span class="stat-value" id="statPos">—</span>
+        </div>
+      </div>
+
+      <!-- Scoreboard -->
+      <div class="panel-section">
+        <h3>Scoreboard</h3>
+        <div id="scoreboard"></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="panel-section">
+        <h3>Controls</h3>
+        <div class="controls-grid">
+          <span class="key">W</span><span class="stat-label">Move Up</span>
+          <span class="key">A</span><span class="stat-label">Move Left</span>
+          <span class="key">S</span><span class="stat-label">Move Down</span>
+          <span class="key">D</span><span class="stat-label">Move Right</span>
+          <span class="key">🖱️</span><span class="stat-label">Aim</span>
+          <span class="key">Click</span><span class="stat-label">Shoot</span>
+        </div>
+      </div>
+
+      <!-- Debug -->
+      <div class="panel-section">
+        <div class="debug-toggle" id="debugToggle">▶ Debug Info</div>
+        <div class="debug-info" id="debugInfo">
+          <div>Interpolation Buffer: <span id="debugInterpBuffer">0</span></div>
+          <div>Server States Recv: <span id="debugStatesRecv">0</span></div>
+          <div>Reconciliation Time: <span id="debugReconTime">0</span>ms</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════════════
+    // CLIENT-SIDE GAME CODE
+    // All prediction, reconciliation, and rendering logic lives here.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // ─── Constants (must match server's shared/constants.ts) ──────────
+    const TICK_RATE = 20;
+    const TICK_INTERVAL_MS = 1000 / TICK_RATE;
+    const TICK_INTERVAL_S = TICK_INTERVAL_MS / 1000;
+    const MAX_SPEED = 300;
+    const PLAYER_RADIUS = 20;
+    const ARENA_WIDTH = 1600;
+    const ARENA_HEIGHT = 900;
+    const SHOOT_COOLDOWN_MS = 500;
+    const RECONCILIATION_THRESHOLD = 0.5;
+    const SNAP_THRESHOLD = 50;
+    const SNAP_SMOOTHING_DURATION_MS = 100;
+    const MAX_PENDING_INPUTS = 120;
+
+    // ─── Shared Physics (identical to server) ─────────────────────────
+    function inputToDirection(actions) {
+      let dx = 0, dy = 0;
+      if (actions.left) dx -= 1;
+      if (actions.right) dx += 1;
+      if (actions.up) dy -= 1;
+      if (actions.down) dy += 1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len === 0) return { x: 0, y: 0 };
+      return { x: dx / len, y: dy / len };
+    }
+
+    function applyMovement(x, y, actions, dt) {
+      const dir = inputToDirection(actions);
+      let newX = x + dir.x * MAX_SPEED * dt;
+      let newY = y + dir.y * MAX_SPEED * dt;
+      newX = Math.max(PLAYER_RADIUS, Math.min(ARENA_WIDTH - PLAYER_RADIUS, newX));
+      newY = Math.max(PLAYER_RADIUS, Math.min(ARENA_HEIGHT - PLAYER_RADIUS, newY));
+      return { x: newX, y: newY };
+    }
+
+    // ─── State ────────────────────────────────────────────────────────
+    let ws = null;
+    let connected = false;
+    let playerId = null;
+    let roomId = null;
+    let seq = 0;
+    let rtt = 0;
+    let lastPingTime = 0;
+    let statesReceived = 0;
+    let correctionCount = 0;
+    let lastCorrectionError = 0;
+    let lastShootTime = 0;
+
+    // Local predicted state
+    let localX = ARENA_WIDTH / 2;
+    let localY = ARENA_HEIGHT / 2;
+
+    // Visual smoothing (for reconciliation corrections)
+    let displayX = localX;
+    let displayY = localY;
+    let smoothingStartTime = 0;
+    let smoothingFromX = 0;
+    let smoothingFromY = 0;
+    let smoothingToX = 0;
+    let smoothingToY = 0;
+    let isSmoothing = false;
+
+    // Pending inputs buffer (for reconciliation)
+    // Each entry: { seq, actions, predictedX, predictedY }
+    let pendingInputs = [];
+
+    // Remote player states (for interpolation)
+    let remotePlayers = {};
+    let serverSnapshots = []; // Last 2 server state snapshots for interpolation
+    let projectiles = [];
+
+    // Input state
+    const keys = { w: false, a: false, s: false, d: false };
+    let mouseX = 0, mouseY = 0;
+    let mouseDown = false;
+
+    // Canvas
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // ─── Player Colors ────────────────────────────────────────────────
+    const PLAYER_COLORS = [
+      '#6366f1', '#22c55e', '#ef4444', '#eab308',
+      '#06b6d4', '#ec4899', '#f97316', '#8b5cf6'
+    ];
+    const playerColorMap = {};
+    let nextColorIdx = 0;
+
+    function getPlayerColor(id) {
+      if (!playerColorMap[id]) {
+        playerColorMap[id] = PLAYER_COLORS[nextColorIdx % PLAYER_COLORS.length];
+        nextColorIdx++;
+      }
+      return playerColorMap[id];
+    }
+
+    // ─── Canvas Setup ─────────────────────────────────────────────────
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      // Account for side panel
+      canvas.width = rect.width - 280;
+      canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ─── Input Handling ───────────────────────────────────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if (e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false;
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+    });
+    canvas.addEventListener('mousedown', () => { mouseDown = true; });
+    canvas.addEventListener('mouseup', () => { mouseDown = false; });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ─── Connection ───────────────────────────────────────────────────
+    function connect(action, roomCode, playerName) {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}`);
+
+      ws.onopen = () => {
+        connected = true;
+        updateStatus(true);
+
+        if (action === 'create') {
+          ws.send(JSON.stringify({ type: 'create_room', playerName }));
+        } else {
+          ws.send(JSON.stringify({ type: 'join_room', roomId: roomCode, playerName }));
+        }
+
+        // Start ping interval
+        setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            lastPingTime = Date.now();
+            ws.send(JSON.stringify({ type: 'ping', clientTimestamp: lastPingTime }));
+          }
+        }, 1000);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      };
+
+      ws.onclose = () => {
+        connected = false;
+        updateStatus(false);
+      };
+
+      ws.onerror = () => {
+        connected = false;
+        updateStatus(false);
+      };
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'room_created':
+          playerId = msg.playerId;
+          roomId = msg.roomId;
+          document.getElementById('roomId').textContent = roomId;
+          document.getElementById('connectDialog').style.display = 'none';
+          break;
+
+        case 'room_joined':
+          playerId = msg.playerId;
+          roomId = msg.roomId;
+          document.getElementById('roomId').textContent = roomId;
+          document.getElementById('connectDialog').style.display = 'none';
+          // Initialize position from server state
+          const self = msg.state.players.find(p => p.id === playerId);
+          if (self) {
+            localX = displayX = self.x;
+            localY = displayY = self.y;
+          }
+          break;
+
+        case 'state_update':
+          handleStateUpdate(msg.state);
+          break;
+
+        case 'pong':
+          rtt = Date.now() - msg.clientTimestamp;
+          document.getElementById('rttDisplay').textContent = `${rtt}ms`;
+          document.getElementById('statRtt').textContent = `${rtt}ms`;
+          const rttEl = document.getElementById('statRtt');
+          rttEl.className = 'stat-value ' + (rtt < 80 ? 'good' : rtt < 150 ? 'warn' : 'bad');
+          break;
+
+        case 'hit_confirm':
+          // Visual feedback for hitting someone
+          break;
+
+        case 'kill_confirm':
+          addKillFeedEntry(msg.killerId, msg.victimId);
+          break;
+
+        case 'error':
+          alert(msg.message);
+          break;
+      }
+    }
+
+    // ─── State Update + Reconciliation ────────────────────────────────
+    /**
+     * SERVER RECONCILIATION — the core algorithm:
+     *
+     * 1. Receive authoritative state from server
+     * 2. Find our player's state (includes lastProcessedSeq)
+     * 3. Discard all pending inputs with seq <= lastProcessedSeq
+     * 4. Compare server position with our predicted position for that seq
+     * 5. If they diverge beyond threshold:
+     *    a. Reset local position to server's authoritative position
+     *    b. Re-apply all remaining pending inputs (replay)
+     *    c. Smooth the visual transition (lerp, not snap)
+     * 6. Update remote players for interpolation
+     */
+    function handleStateUpdate(state) {
+      statesReceived++;
+      document.getElementById('statTick').textContent = state.tick;
+      document.getElementById('debugStatesRecv').textContent = statesReceived;
+
+      // Store for interpolation of remote players
+      serverSnapshots.push(state);
+      if (serverSnapshots.length > 3) serverSnapshots.shift();
+
+      // Update projectiles
+      projectiles = state.projectiles || [];
+
+      // Find our player in the state
+      const serverSelf = state.players.find(p => p.id === playerId);
+      if (!serverSelf) return;
+
+      // Update HUD
+      document.getElementById('statHp').textContent = serverSelf.hp;
+      document.getElementById('statScore').textContent = serverSelf.score;
+      const hpPercent = (serverSelf.hp / 100) * 100;
+      const hpBar = document.getElementById('hpBar');
+      hpBar.style.width = hpPercent + '%';
+      hpBar.className = 'hp-bar' + (hpPercent < 30 ? ' low' : '');
+
+      // ═══ RECONCILIATION ═══
+
+      // Step 1: Discard acknowledged inputs
+      const ackSeq = serverSelf.lastProcessedSeq;
+      pendingInputs = pendingInputs.filter(pi => pi.seq > ackSeq);
+
+      // Step 2: Compare server position with our predicted position
+      const dx = serverSelf.x - localX;
+      const dy = serverSelf.y - localY;
+      const error = Math.sqrt(dx * dx + dy * dy);
+
+      if (error > RECONCILIATION_THRESHOLD) {
+        correctionCount++;
+        lastCorrectionError = error;
+
+        // Step 3: Reset to server's authoritative position
+        localX = serverSelf.x;
+        localY = serverSelf.y;
+
+        // Step 4: Re-apply all unacknowledged inputs
+        const replayStart = performance.now();
+        for (const pi of pendingInputs) {
+          const newPos = applyMovement(localX, localY, pi.actions, TICK_INTERVAL_S);
+          localX = newPos.x;
+          localY = newPos.y;
+        }
+        const replayTime = performance.now() - replayStart;
+        document.getElementById('debugReconTime').textContent = replayTime.toFixed(2);
+
+        // Step 5: Visual smoothing
+        if (error < SNAP_THRESHOLD) {
+          // Small error: lerp smoothly
+          isSmoothing = true;
+          smoothingStartTime = performance.now();
+          smoothingFromX = displayX;
+          smoothingFromY = displayY;
+          smoothingToX = localX;
+          smoothingToY = localY;
+        } else {
+          // Large error: snap immediately (likely cheating or extreme lag)
+          displayX = localX;
+          displayY = localY;
+          isSmoothing = false;
+        }
+      }
+
+      // Update stats
+      document.getElementById('statCorrections').textContent = correctionCount;
+      document.getElementById('statLastError').textContent = lastCorrectionError.toFixed(1);
+      document.getElementById('statPending').textContent = pendingInputs.length;
+
+      // Update remote players
+      for (const p of state.players) {
+        if (p.id === playerId) continue;
+        if (!remotePlayers[p.id]) {
+          remotePlayers[p.id] = { prevState: p, nextState: p, interpT: 0 };
+        } else {
+          remotePlayers[p.id].prevState = remotePlayers[p.id].nextState;
+          remotePlayers[p.id].nextState = p;
+          remotePlayers[p.id].interpT = 0;
+        }
+      }
+
+      // Remove players that are no longer in the state
+      const currentIds = new Set(state.players.map(p => p.id));
+      for (const id of Object.keys(remotePlayers)) {
+        if (!currentIds.has(id)) delete remotePlayers[id];
+      }
+
+      // Update scoreboard
+      updateScoreboard(state.players);
+    }
+
+    // ─── Game Loop (Client) ───────────────────────────────────────────
+    let lastFrameTime = performance.now();
+    let inputAccumulator = 0;
+
+    function gameLoop(timestamp) {
+      const frameTime = timestamp - lastFrameTime;
+      lastFrameTime = timestamp;
+
+      if (connected && playerId) {
+        inputAccumulator += frameTime;
+
+        // Send inputs at tick rate
+        while (inputAccumulator >= TICK_INTERVAL_MS) {
+          inputAccumulator -= TICK_INTERVAL_MS;
+          sendInput();
+        }
+
+        // Update visual smoothing
+        if (isSmoothing) {
+          const elapsed = performance.now() - smoothingStartTime;
+          const t = Math.min(1, elapsed / SNAP_SMOOTHING_DURATION_MS);
+          displayX = smoothingFromX + (smoothingToX - smoothingFromX) * t;
+          displayY = smoothingFromY + (smoothingToY - smoothingFromY) * t;
+          if (t >= 1) {
+            isSmoothing = false;
+            displayX = localX;
+            displayY = localY;
+          }
+        } else {
+          displayX = localX;
+          displayY = localY;
+        }
+
+        // Interpolate remote players
+        for (const id of Object.keys(remotePlayers)) {
+          const rp = remotePlayers[id];
+          rp.interpT = Math.min(1, rp.interpT + frameTime / TICK_INTERVAL_MS);
+        }
+      }
+
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function sendInput() {
+      const now = Date.now();
+      const actions = {
+        up: keys.w,
+        down: keys.s,
+        left: keys.a,
+        right: keys.d,
+        shoot: mouseDown && (now - lastShootTime >= SHOOT_COOLDOWN_MS),
+      };
+
+      if (actions.shoot) {
+        lastShootTime = now;
+      }
+
+      // Calculate aim angle from mouse position
+      const scaleX = ARENA_WIDTH / canvas.width;
+      const scaleY = ARENA_HEIGHT / canvas.height;
+      const worldMouseX = mouseX * scaleX;
+      const worldMouseY = mouseY * scaleY;
+      const aimAngle = Math.atan2(worldMouseY - localY, worldMouseX - localX);
+
+      seq++;
+      const input = {
+        seq,
+        actions,
+        aimAngle,
+        timestamp: now,
+      };
+
+      // CLIENT-SIDE PREDICTION: apply input locally BEFORE sending
+      const newPos = applyMovement(localX, localY, actions, TICK_INTERVAL_S);
+      localX = newPos.x;
+      localY = newPos.y;
+
+      // Store in pending buffer for reconciliation
+      pendingInputs.push({
+        seq,
+        actions: { ...actions },
+        predictedX: localX,
+        predictedY: localY,
+      });
+
+      // Trim if too many pending
+      if (pendingInputs.length > MAX_PENDING_INPUTS) {
+        pendingInputs = pendingInputs.slice(-MAX_PENDING_INPUTS);
+      }
+
+      // Send to server
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', input }));
+      }
+
+      // Update position display
+      document.getElementById('statPos').textContent = 
+        `${Math.round(localX)}, ${Math.round(localY)}`;
+      document.getElementById('statPending').textContent = pendingInputs.length;
+    }
+
+    // ─── Rendering ────────────────────────────────────────────────────
+    function render() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const scaleX = w / ARENA_WIDTH;
+      const scaleY = h / ARENA_HEIGHT;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background grid
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.06)';
+      ctx.lineWidth = 1;
+      const gridSize = 50;
+      for (let x = 0; x <= ARENA_WIDTH; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x * scaleX, 0);
+        ctx.lineTo(x * scaleX, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= ARENA_HEIGHT; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * scaleY);
+        ctx.lineTo(w, y * scaleY);
+        ctx.stroke();
+      }
+
+      // Arena border
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, w - 2, h - 2);
+
+      // Draw projectiles
+      for (const proj of projectiles) {
+        ctx.save();
+        ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(proj.x * scaleX, proj.y * scaleY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Draw remote players
+      for (const id of Object.keys(remotePlayers)) {
+        const rp = remotePlayers[id];
+        const t = rp.interpT;
+        const ix = rp.prevState.x + (rp.nextState.x - rp.prevState.x) * t;
+        const iy = rp.prevState.y + (rp.nextState.y - rp.prevState.y) * t;
+        const alive = rp.nextState.alive;
+        const color = getPlayerColor(id);
+
+        if (!alive) {
+          ctx.globalAlpha = 0.3;
+        }
+
+        // Player circle
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ix * scaleX, iy * scaleY, PLAYER_RADIUS * scaleX, 0, Math.PI * 2);
+        ctx.fillStyle = color + '40';
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        // HP bar above player
+        if (alive) {
+          const barWidth = 40 * scaleX;
+          const barHeight = 4;
+          const barX = ix * scaleX - barWidth / 2;
+          const barY = iy * scaleY - PLAYER_RADIUS * scaleY - 12;
+          const hpFrac = rp.nextState.hp / 100;
+
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(barX, barY, barWidth, barHeight);
+          ctx.fillStyle = hpFrac > 0.5 ? '#22c55e' : hpFrac > 0.25 ? '#eab308' : '#ef4444';
+          ctx.fillRect(barX, barY, barWidth * hpFrac, barHeight);
+        }
+
+        ctx.globalAlpha = 1;
+      }
+
+      // Draw local player
+      if (playerId) {
+        const color = getPlayerColor(playerId);
+
+        // Glow effect
+        ctx.save();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(displayX * scaleX, displayY * scaleY, PLAYER_RADIUS * scaleX, 0, Math.PI * 2);
+        ctx.fillStyle = color + '60';
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+
+        // Aim line
+        const worldMouseX2 = mouseX; // already in canvas coords
+        const worldMouseY2 = mouseY;
+        const angle = Math.atan2(worldMouseY2 - displayY * scaleY, worldMouseX2 - displayX * scaleX);
+        const lineLen = 40;
+
+        ctx.save();
+        ctx.strokeStyle = color + '80';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(displayX * scaleX, displayY * scaleY);
+        ctx.lineTo(
+          displayX * scaleX + Math.cos(angle) * lineLen,
+          displayY * scaleY + Math.sin(angle) * lineLen
+        );
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        // Crosshair at mouse
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mouseX - 16, mouseY);
+        ctx.lineTo(mouseX + 16, mouseY);
+        ctx.moveTo(mouseX, mouseY - 16);
+        ctx.lineTo(mouseX, mouseY + 16);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // ─── UI Helpers ───────────────────────────────────────────────────
+    function updateStatus(isConnected) {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      dot.className = 'status-dot ' + (isConnected ? 'connected' : 'disconnected');
+      text.textContent = isConnected ? 'Connected' : 'Disconnected';
+    }
+
+    function updateScoreboard(players) {
+      const sb = document.getElementById('scoreboard');
+      const sorted = [...players].sort((a, b) => b.score - a.score);
+      sb.innerHTML = sorted.map(p => {
+        const color = getPlayerColor(p.id);
+        const isSelf = p.id === playerId;
+        return `<div class="scoreboard-entry ${isSelf ? 'self' : ''}">
+          <span class="score-name">
+            <span class="player-dot" style="background:${color}"></span>
+            ${isSelf ? 'You' : p.id.slice(0, 6)}
+          </span>
+          <span class="stat-value">${p.score}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function addKillFeedEntry(killerId, victimId) {
+      const feed = document.getElementById('killFeed');
+      const entry = document.createElement('div');
+      entry.className = 'kill-entry';
+      const killerName = killerId === playerId ? 'You' : killerId.slice(0, 6);
+      const victimName = victimId === playerId ? 'You' : victimId.slice(0, 6);
+      entry.innerHTML = `<span style="color:${getPlayerColor(killerId)}">${killerName}</span> → <span style="color:${getPlayerColor(victimId)}">${victimName}</span>`;
+      feed.appendChild(entry);
+      setTimeout(() => entry.remove(), 4000);
+    }
+
+    // ─── Debug Toggle ─────────────────────────────────────────────────
+    document.getElementById('debugToggle').addEventListener('click', () => {
+      const info = document.getElementById('debugInfo');
+      const toggle = document.getElementById('debugToggle');
+      info.classList.toggle('visible');
+      toggle.textContent = info.classList.contains('visible') ? '▼ Debug Info' : '▶ Debug Info';
+    });
+
+    // ─── Connect Buttons ──────────────────────────────────────────────
+    document.getElementById('btnCreate').addEventListener('click', () => {
+      const name = document.getElementById('playerName').value || undefined;
+      connect('create', null, name);
+    });
+
+    document.getElementById('btnJoin').addEventListener('click', () => {
+      const name = document.getElementById('playerName').value || undefined;
+      const code = document.getElementById('roomCode').value.toUpperCase();
+      if (!code) {
+        alert('Enter a room code to join');
+        return;
+      }
+      connect('join', code, name);
+    });
+
+    // Start render loop
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

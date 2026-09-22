@@ -16,9 +16,10 @@
   Engineered specifically to solve the core distributed systems challenge of <b>Time and Trust</b> across variable network latency.
 </p>
 
-[🎮 Live Demo](#-interactive-demo-client) •
+[🎮 Interactive Client](#-interactive-demo-client) •
 [🏗️ Architecture](#️-system-architecture) •
 [⏱️ Time & Trust](#-the-core-problem-time--trust) •
+[📡 Network Protocol](#-wire-protocol-specification) •
 [⚖️ Trade-Offs](#️-engineering-trade-offs) •
 [🧪 Test Suite](#-automated-testing--verification) •
 [🚀 Quick Start](#-quick-start)
@@ -44,17 +45,32 @@ This project delivers the complete, industry-standard multiplayer netcode stack 
 
 The backend serves an interactive, high-performance HTML5 Canvas client accessible at `http://localhost:3000`:
 
-<div align="center">
-  <kbd><img src="https://raw.githubusercontent.com/abhishekkumarcoder21/Real-Time-Multiplayer-Game-Server/main/docs/demo_preview.png" alt="Arena Preview" width="850" onerror="this.style.display='none'"/></kbd>
-</div>
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LAG COMPENSATION ARENA                                     [RTT: 42ms]  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│      Player 1 (Local)                                                       │
+│          (X: 400, Y: 300) ──────Hitscan Ray──────> [ Target (Past Pos) ]   │
+│                                                     (Rewound 42ms)          │
+│                                                                             │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ CONTROLS: [W][A][S][D] Move  •  [Mouse] Aim  •  [Left Click] Shoot          │
+│ SIMULATOR: Latency: [───●──────] 150ms  •  [x] Prediction  •  [x] Reconcile │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### Client Features
-- **Client-Side Prediction**: Inputs immediately update local position via shared deterministic physics equations.
-- **Server Reconciliation**: Automatically reconciles divergence when the server state arrives, replaying unacknowledged inputs seamlessly.
-- **Adaptive Smoothing**: Small prediction errors ($<50\text{ units}$) are smoothly lerped over 100ms; large errors ($>50\text{ units}$) trigger an instant snap to eliminate rubberbanding.
-- **Entity Interpolation**: Remote opponents render 1 tick in the past, smoothly interpolated between snapshots to eliminate packet stutter.
-- **In-Browser Latency Simulator**: Interactive slider allowing developers to inject **0ms to 500ms artificial network delay** and custom packet jitter directly in the browser.
-- **Real-Time Telemetry HUD**: Live metrics for ping/RTT, tick counter, pending inputs buffer size, reconciliation frequency, and health bars.
+### Controls & Interactive Features
+| Action | Key / Input | Mechanism |
+| :--- | :---: | :--- |
+| **Movement** | `W`, `A`, `S`, `D` | Normalized diagonal speed ($300\text{ units/s}$) with arena boundary clamping |
+| **Aiming** | Mouse Cursor | 360° directional aim vector calculated in radians ($[0, 2\pi)$) |
+| **Shooting** | Left Mouse Button | Server-authoritative hitscan with $500\text{ms}$ cooldown enforcement |
+| **Prediction Toggle** | Checkbox | Toggle between raw network delay and immediate local responsiveness |
+| **Reconciliation Toggle** | Checkbox | Observe client desynchronization drift vs. automatic authoritative correction |
+| **Latency Simulator** | Slider (0–500ms) | Injects artificial network latency and packet jitter directly in the browser |
+| **Telemetry HUD** | Real-Time Display | Live metrics for RTT, tick counter, pending inputs buffer, and corrections |
 
 ---
 
@@ -101,7 +117,39 @@ graph TD
     Loop --> Metrics
 ```
 
-For full mathematical proofs, algorithm diagrams, and sequence flows, see [ARCHITECTURE.md](ARCHITECTURE.md).
+---
+
+## 🔄 Packet Sequence & Time Synchronization
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client (Shooter)
+    participant S as Server (Ground Truth)
+    participant T as Target Player
+
+    Note over C: Client samples inputs (t = 0ms)
+    C->>C: Predict movement immediately on Canvas
+    C->>S: WS INPUT { seq: 42, actions, aimAngle: 0.78, timestamp: 1000 }
+    Note over S: InputValidator checks seq & rate limits
+    
+    rect rgb(20, 25, 40)
+    Note over S: Server Tick Loop (Every 50ms)
+    S->>S: Advance authoritative physics (dt = 0.05s)
+    S->>S: Rewind world state to shooter's past (RTT/2)
+    S->>S: Perform 2D ray-circle hitscan test
+    S->>S: Apply damage to victim's current HP
+    S->>S: Record world state in 10-tick history ring buffer
+    end
+
+    S->>C: STATE_UPDATE { tick: 20, lastProcessedSeq: 42, players: [...] }
+    S->>C: HIT_CONFIRM { targetId: "player-B", damage: 25 }
+    S->>T: STATE_UPDATE (Target HP updated)
+    
+    Note over C: Server Reconciliation (Discards seq <= 42)
+    Note over C: Replays remaining pending inputs forward
+    Note over T: Remote Entity Interpolation (smooth lerp between ticks)
+```
 
 ---
 
@@ -143,20 +191,102 @@ Damage is applied to Target's CURRENT HP on the server timeline.
 
 ---
 
+## 📡 Wire Protocol Specification
+
+The protocol is designed around a fundamental security asymmetry:
+> **Clients send INTENTIONS (inputs), never outcomes (positions).**  
+> **The server sends AUTHORITATIVE TRUTH (world state), never ACKs.**
+
+### 1. Client Input Packet (`INPUT`)
+Sent from client $\rightarrow$ server at the client's frame rate or fixed tick rate:
+```json
+{
+  "type": "input",
+  "input": {
+    "seq": 142,
+    "actions": {
+      "up": true,
+      "down": false,
+      "left": false,
+      "right": true,
+      "shoot": false
+    },
+    "aimAngle": 0.7853,
+    "timestamp": 1727048400123
+  }
+}
+```
+
+### 2. Server World Snapshot (`STATE_UPDATE`)
+Broadcast from server $\rightarrow$ all room clients at 20Hz:
+```json
+{
+  "type": "state_update",
+  "state": {
+    "tick": 240,
+    "timestamp": 1727048400150,
+    "players": [
+      {
+        "id": "p1-uuid",
+        "x": 420.5,
+        "y": 310.2,
+        "hp": 100,
+        "score": 3,
+        "lastProcessedSeq": 142,
+        "alive": true,
+        "respawnAt": 0
+      }
+    ],
+    "projectiles": []
+  }
+}
+```
+
+### 3. Hit Confirmation (`HIT_CONFIRM`)
+Sent exclusively to the shooter when lag-compensated hit detection succeeds:
+```json
+{
+  "type": "hit_confirm",
+  "targetId": "p2-uuid",
+  "damage": 25
+}
+```
+
+### 4. Kill Broadcast (`KILL_CONFIRM`)
+Broadcast to all players in the room when an entity's HP reaches zero:
+```json
+{
+  "type": "kill_confirm",
+  "killerId": "p1-uuid",
+  "victimId": "p2-uuid"
+}
+```
+
+---
+
 ## ⚖️ Engineering Trade-Offs
 
-### 1. Lag Compensation: Shooter Advantage vs. Victim Experience
+### 1. Architecture Comparison Matrix
+
+| Model | Trust Level | Latency Resilience | Cheat Resistance | Bandwidth | Best Suited For |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Peer-to-Peer Lockstep** | Low | Very Poor (waits on slowest peer) | Moderate | Very Low | RTS games (StarCraft, Age of Empires) |
+| **Client-Authoritative** | High (Vulnerable) | Excellent | Terrible | Low | Casual co-op, turn-based games |
+| **CRDT State Sync** | High | Excellent | Poor (edits commute) | Moderate | Document editors (Docs, Figma) |
+| **Server-Authoritative + Lag Comp (Ours)** | **Zero Trust** | **Excellent** | **High** | **Moderate (20Hz)** | **Competitive FPS & Arena Shooters** |
+
+### 2. Lag Compensation: Shooter Advantage vs. Victim Experience
 | Perspective | Experience | Engineering Rationale |
 | :--- | :--- | :--- |
 | **Shooter Perspective** | Responsive & Fair | "What you see is what you hit." Players do not need to lead hitscan weapons based on arbitrary ping. |
 | **Victim Perspective** | Occasional Desync | A victim running behind a wall might get hit because, on the shooter's delayed screen, they had not reached cover yet. |
 | **Our Mitigation** | **200ms Rewind Cap** | Rewind is hard-capped at 4 ticks ($200\text{ms}$). Players with $>200\text{ms}$ ping receive partial compensation and must lead their shots. This protects low-ping victims from extreme "shot around corners" artifacts. |
 
-### 2. Tick Rate: 20Hz vs. 60Hz
+### 3. Tick Rate: 20Hz vs. 60Hz
 - **20Hz ($50\text{ms}$)**: Selected for this server. Ideal for web-based multiplayer, consuming $\approx 8\text{--}12\text{ KB/s}$ bandwidth per client while maintaining crisp responsiveness via client-side interpolation.
 - **60Hz ($16.6\text{ms}$)**: Requires 3x CPU budget and 3x network bandwidth. While common in esports (CS2/Valorant), 20Hz is standard for large-scale games (Battlefield, Overwatch base servers) and makes the discrete math easy to reason about.
 
-### 3. Security Boundaries of Server Authority
+### 4. Security Boundaries of Server Authority
 | Cheat Vector | Server Defense | Status |
 | :--- | :--- | :---: |
 | **Speed Hacking** | Server computes all displacements via `applyMovement` | 🛡️ **Prevented** |
@@ -175,10 +305,10 @@ Damage is applied to Target's CURRENT HP on the server timeline.
 The repository features comprehensive automated test suites covering unit physics, edge cases, anti-cheat validation, and the 5 critical failure scenarios:
 
 ```bash
-# Run unit & integration tests
+# Run unit & integration tests (36 passing tests across 9 suites)
 npm test
 
-# Run linter
+# Run code style and syntax linter
 npm run lint
 
 # Static TypeScript type check
